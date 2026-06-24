@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     zip \
     nano \
+    curl \
     libpng-dev \
     libjpeg-dev \
     libfreetype6-dev \
@@ -18,11 +19,50 @@ RUN apt-get update && apt-get install -y \
 
 # Enable EXIF for PHP
 RUN docker-php-ext-enable exif
-# Enable mod_rewrite for Apache
-RUN a2enmod rewrite
+
+# Enable Apache modules and configure OSSN rewrites permanently
+RUN a2enmod rewrite headers expires \
+    && echo "ServerName localhost" >> /etc/apache2/apache2.conf \
+    && cat > /etc/apache2/conf-available/ossn-overrides.conf <<'EOF'
+<Directory /var/www/html>
+    Options FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>
+EOF
+
+RUN a2enconf ossn-overrides
+
+# Force Apache to route OSSN dynamic paths correctly
+RUN cat > /etc/apache2/sites-available/000-default.conf <<'EOF'
+<VirtualHost *:80>
+    ServerAdmin webmaster@localhost
+    DocumentRoot /var/www/html
+
+    <Directory /var/www/html>
+        Options FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    RewriteEngine On
+
+    RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-d
+    RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f
+    RewriteRule ^/([A-Za-z0-9_\-\.]+)/(.*)$ /index.php?h=$1&p=$2 [QSA,L]
+
+    RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-d
+    RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f
+    RewriteRule ^/([A-Za-z0-9_\-\.]+)$ /index.php?h=$1 [QSA,L]
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+EOF
 
 # Download and extract OSSN
 ADD https://www.opensource-socialnetwork.org/download_ossn/latest/build.zip /tmp/ossn.zip
+
 RUN unzip /tmp/ossn.zip -d /var/www/html/ \
     && mv /var/www/html/ossn/* /var/www/html/ \
     && rm -rf /var/www/html/ossn /tmp/ossn.zip
@@ -30,17 +70,20 @@ RUN unzip /tmp/ossn.zip -d /var/www/html/ \
 # Replace settings.php with the latest from GitHub
 RUN curl -L -o /var/www/html/installation/pages/settings.php https://raw.githubusercontent.com/opensource-socialnetwork/docker/refs/heads/main/settings.php
 
-# Create a data directory for OSSN (used for file storage)
-RUN mkdir -p /var/www/ossn_data && \
-    chown -R www-data:www-data /var/www/ossn_data
+# Create a data directory for OSSN used for file storage
+RUN mkdir -p /var/www/ossn_data \
+    && chown -R www-data:www-data /var/www/ossn_data \
+    && chgrp www-data /var/www/ossn_data \
+    && chmod g+w /var/www/ossn_data
 
-# Set permissions and group ownership for the OSSN parent directory
-RUN chgrp www-data /var/www/ossn_data && \
-    chmod g+w /var/www/ossn_data
+# Create configurations directory for persistent OSSN config
+RUN mkdir -p /var/www/html/configurations
 
 # Set permissions for the web directory
-RUN chown -R www-data:www-data /var/www/html/ && \
-    chmod -R 755 /var/www/html/
+RUN chown -R www-data:www-data /var/www/html/ \
+    && chmod -R 755 /var/www/html/ \
+    && chown -R www-data:www-data /var/www/ossn_data \
+    && chmod -R 755 /var/www/ossn_data
 
 # Expose port 80
 EXPOSE 80
