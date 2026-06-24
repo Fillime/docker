@@ -47,6 +47,13 @@ RUN cat > /etc/apache2/sites-available/000-default.conf <<'EOF'
 
     RewriteEngine On
 
+    # OSSN action handler: required for login, register, comments, likes, messages, etc.
+    RewriteRule ^/action/([A-Za-z0-9_\-/]+)$ /system/handlers/actions.php?action=$1 [QSA,L]
+
+    # OSSN rewrite test
+    RewriteRule ^/rewrite.php$ /installation/tests/apache_rewrite.php [L]
+
+    # OSSN dynamic page handlers: js, css, profile, u, group, cache, etc.
     RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-d
     RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} !-f
     RewriteRule ^/([A-Za-z0-9_\-\.]+)/(.*)$ /index.php?h=$1&p=$2 [QSA,L]
@@ -79,7 +86,7 @@ RUN mkdir -p /var/www/ossn_data \
 # Create configurations directory for persistent OSSN config
 RUN mkdir -p /var/www/html/configurations
 
-# Set permissions for the web directory
+# Set permissions for OSSN directories
 RUN chown -R www-data:www-data /var/www/html/ \
     && chmod -R 755 /var/www/html/ \
     && chown -R www-data:www-data /var/www/ossn_data \
