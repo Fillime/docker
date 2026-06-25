@@ -20,6 +20,15 @@ RUN apt-get update && apt-get install -y \
 # Enable EXIF for PHP
 RUN docker-php-ext-enable exif
 
+# PHP upload limits for OSSN
+RUN cat > /usr/local/etc/php/conf.d/ossn-uploads.ini <<'EOF'
+upload_max_filesize = 100M
+post_max_size = 110M
+memory_limit = 512M
+max_execution_time = 300
+max_input_time = 300
+EOF
+
 # Enable Apache modules and configure OSSN rewrites permanently
 RUN a2enmod rewrite headers expires \
     && echo "ServerName localhost" >> /etc/apache2/apache2.conf \
@@ -38,6 +47,9 @@ RUN cat > /etc/apache2/sites-available/000-default.conf <<'EOF'
 <VirtualHost *:80>
     ServerAdmin webmaster@localhost
     DocumentRoot /var/www/html
+
+    # Allow large uploads through Apache
+    LimitRequestBody 0
 
     <Directory /var/www/html>
         Options FollowSymLinks
